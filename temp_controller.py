@@ -6,21 +6,28 @@ import datetime
 
 
 
-
+#######################################
+#Read data from config file
+#######################################
 config = configparser.ConfigParser()
 config.read('temp_config.cfg')
 
+print('Reading in rat set temp configurations')
 rat_set_temps = {}
 for option in config.options('rat_set_temps'):
     rat_set_temps[float(option)] = float(config.get('rat_set_temps', option))
 
+print('Reading in rat maintainance temp change configurations')
 rat_maint_dts = {}
 for option in config.options('rat_maint_dts'):
     rat_maint_dts[float(option)] = float(config.get('rat_maint_dts', option))
 
+print('Reading in rat warming temp change configurations')
 rat_warming_dts = {}
 for option in config.options('rat_warming_dts'):
     rat_warming_dts[float(option)] = float(config.get('rat_warming_dts', option))
+
+
 
 def open_sheet(excel_file):
     workbook = xlrd.open_workbook(excel_file)
@@ -36,7 +43,7 @@ def read_current_temp(sheet):
         print('reading in temperature of ' + str(current_temp)+ ' degrees')
         return float(current_temp)
 
-def calculate_set_temp(temp, phase, d_temp, last_set_temp):
+def calculate_set_temp(temp, phase, d_temp, last_set_temp): #gets closest value from tables in temp_config
     if phase == 0:
         local_temp = rat_set_temps.get(temp, rat_set_temps[min(rat_set_temps.keys(), key=lambda k: abs(k-temp))])
         return min(40,max(4,local_temp))
@@ -49,13 +56,13 @@ def calculate_set_temp(temp, phase, d_temp, last_set_temp):
     else:
         return 0
 
-def calculate_checksum(command):
+def calculate_checksum(command): #part of generating command for temp controller
     checksum = 0
     for letter in command:
         checksum += int(ord(letter))
     return str(hex(checksum))[-2:]
         
-def create_command(set_temp):
+def create_command(set_temp): #creates command to be read by 
     set_temp *= 100
     if set_temp < 0:
         set_temp = 2**16 - abs(int(set_temp))
@@ -114,6 +121,7 @@ def main(excel_file, phase, elapsed_time,temp_prev, temp_curr, d_temp, last_set_
 ################Main Loop################
 #########################################
 try:
+    print('Begining logging')
     with open('experiment_log.txt','a') as out_file:
         out_file.write('Begining Auto Temperature Control\n')
         out_file.write('Start Time:{}\n'.format(datetime.datetime.now()))
@@ -122,15 +130,22 @@ try:
     phase = 0
     time_increment = int(config.get('GENERAL','update_frequency'))
     excel_file = config.get('GENERAL','excel_file')
+    print('Reading initial temp from Excel sheet (this may take a momment)')
     temp_prev = read_current_temp(open_sheet(excel_file))
     temp_curr = temp_prev
     d_temp = 0
     set_temp = 0
+    print('Begining temperature control\n')
     while True:
         print('temperature change:{}'.format(d_temp))
         phase, temp_prev, temp_curr, d_temp, set_temp= main(excel_file, phase, elapsed_time, temp_prev, temp_curr, d_temp, set_temp)
         print('elapsed time ({:02d}:{:02d}:{:02d})   Phase:{} \n'.format(int(elapsed_time/(60*60)),int(elapsed_time/60)%60,elapsed_time%60,phase))
         time.sleep(time_increment)
         elapsed_time += time_increment
-except KeyboardInterrupt:
-    print(' User Interupt')
+except Exception as e:
+    with open('experiment_log.txt','a') as out_file:
+        out_file.write(repr(e)+'\n')
+        out_file.close()
+    print(e)
+
+    input('press ENTER to exit. . .')
