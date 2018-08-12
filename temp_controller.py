@@ -31,6 +31,10 @@ rat_warming_targets = {}
 for option in config.options('rat_warming_targets'):
     rat_warming_targets[float(option)] = float(config.get('rat_warming_targets', option))
 
+# rat_warming_modifiers = {}
+# for option in config.options('rat_warming_modifiers'):
+#     rat_warming_modifiers[float(option)] = float(config.get('rat_warming_modifiers', option))
+
 
 def open_sheet(excel_file):
     workbook = xlrd.open_workbook(excel_file)
@@ -40,7 +44,7 @@ def open_sheet(excel_file):
 def read_current_temp(sheet):
     current_temp = sheet.cell_value(int(config.get('GENERAL','excel_cell_y')),int(config.get('GENERAL','excel_cell_x')))
     if current_temp ==0x2A or current_temp ==0x00:
-        print('Excel sheet has an empty value in the current temp cell, this may because experiment has just started and an average temperature has not been generated yet')
+        print('Excel sheet has an empty value in the current temp cell, this may because experiment has just started and an average temperature has not been generated yet, setting read to default starting temp')
         return int(config.get('MAINTENANCE','default_starting_temp'))
     else:
         print('Reading in temperature of ' + str(current_temp)+ ' degrees')
@@ -56,11 +60,16 @@ def calculate_set_temp(temp, phase, d_temp, last_set_temp): #gets closest value 
     elif phase == 1:
         local_temp = rat_set_temps.get(temp, rat_set_temps[min(rat_set_temps.keys(), key=lambda k: abs(k-temp))])+rat_maint_dts.get(d_temp,rat_maint_dts[min(rat_maint_dts.keys(), key=lambda k: abs(k-d_temp))])
         return min(40,max(4,local_temp))
-    elif phase == 2:############################ Add code using time to track target from config #########################################################################################################################################
+    elif phase == 2:
+        print('calculating set temp for warming hour: {}, threshold temp is {}'.format(int((warming_time/(60*60))),rat_warming_targets[int(warming_time/(60*60))] ))
         target_temp = rat_warming_targets[int(warming_time/(60*60))]
         local_temp = last_set_temp
         if abs(d_temp) <= int(config.get('WARMING','max_d_temp')):
-            local_temp += rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))])
+            if temp >= target_temp:
+                #local_temp = target_temp - rat_warming_modifiers.get(abs(temp-target_temp),rat_warming_modifiers[min(rat_warming_modifiers.keys(), key = lambda k:abs(k-abs(temp-target_temp)))])
+                local_temp += rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))])
+            elif temp < target_temp and rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))]) > 0:
+                local_temp += rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))])
         return min(40,max(4,local_temp))
     else:
         return 0
@@ -133,7 +142,6 @@ def main(excel_file, phase, elapsed_time,temp_prev, temp_curr, d_temp, last_set_
 ################Main Loop################
 #########################################
 try:
-    print('Begining logging')
     with open('experiment_log.txt','a') as out_file:
         out_file.write('Begining Auto Temperature Control\n')
         out_file.write('Start Time:{}\n'.format(datetime.datetime.now()))
@@ -146,7 +154,7 @@ try:
     temp_prev = read_current_temp(open_sheet(excel_file))
     if temp_prev > int(config.get('WARMING', 'max_body_temp')) or temp_prev < int(config.get('WARMING','min_body_temp')):
         print('Reading in a temperature outside of expected range, defaulting to default starting temp')
-        temp_prev = int(config.get('MAINTAINENCE','default_starting_temp'))
+        temp_prev = int(config.get('MAINTENANCE','default_starting_temp'))
     temp_curr = temp_prev
     d_temp = 0
     set_temp = 0
@@ -159,7 +167,7 @@ try:
         elapsed_time += time_increment
         if phase == 2:
             warming_time += time_increment
-        if warming_time == int(config.get('WARMING','duration')):
+        if int(warming_time/(60*60)) == int(config.get('WARMING','duration')):
             break
     with open('experiment_log.txt','a') as out_file:
         out_file.write('Experiment Complete\n\n')
