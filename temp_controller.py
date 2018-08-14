@@ -51,7 +51,7 @@ def read_current_temp(sheet):
         return float(current_temp)
 
 #BAD GLOBAL VARIABLE FOR TRACKING TIME DURING WARMING. FIX IF YOU HAVE THE TIME AND INCLINATION (works fine, just bad practice)
-warming_time = 0
+warming_time = config.getint('TESTING','starting_warming_time')
 
 def calculate_set_temp(temp, phase, d_temp, last_set_temp): #gets closest value from tables in temp_config
     if phase == 0:
@@ -146,8 +146,8 @@ try:
         out_file.write('Begining Auto Temperature Control\n')
         out_file.write('Start Time:{}\n'.format(datetime.datetime.now()))
         out_file.close()
-    elapsed_time = 0
-    phase = 0
+    elapsed_time = config.getint('TESTING','starting_elapsed_time')
+    phase = int(config.get('TESTING','start_phase'))
     time_increment = int(config.get('GENERAL','update_frequency'))
     excel_file = config.get('GENERAL','excel_file')
     print('Reading initial temp from Excel sheet (this may take a momment)')
