@@ -41,14 +41,19 @@ def open_sheet(excel_file):
     sheet = workbook.sheet_by_index(0)
     return sheet
 
-def read_current_temp(sheet):
-    current_temp = sheet.cell_value(int(config.get('GENERAL','excel_cell_y')),int(config.get('GENERAL','excel_cell_x')))
-    if current_temp ==0x2A or current_temp ==0x00:
-        print('Excel sheet has an empty value in the current temp cell, this may because experiment has just started and an average temperature has not been generated yet, setting read to default starting temp')
-        return int(config.get('MAINTENANCE','default_starting_temp'))
-    else:
-        print('Reading in temperature of ' + str(current_temp)+ ' degrees')
-        return float(current_temp)
+def read_current_temp(sheet, def_temp):
+    try:
+        current_temp = sheet.cell_value(int(config.get('GENERAL','excel_cell_y')),int(config.get('GENERAL','excel_cell_x')))
+        if current_temp ==0x2A or current_temp ==0x00:
+            print('Excel sheet has an empty value in the current temp cell, this may because experiment has just started and an average temperature has not been generated yet, setting read to default starting temp')
+            return int(config.get('MAINTENANCE','default_starting_temp'))
+        else:
+            print('Reading in temperature of ' + str(current_temp)+ ' degrees')
+            return float(current_temp)
+    except Exception as e:
+        print("Error reading current temp from excel, using previous temp")
+        return def_temp
+
 
 #BAD GLOBAL VARIABLE FOR TRACKING TIME DURING WARMING. FIX IF YOU HAVE THE TIME AND INCLINATION (works fine, just bad practice)
 warming_time = config.getint('TESTING','starting_warming_time')
@@ -103,9 +108,13 @@ def write_out_temp(set_temp):
         out_file.write(create_command(set_temp))
         out_file.close()
 
-def main(excel_file, phase, elapsed_time,temp_prev, temp_curr, d_temp, last_set_temp):
-    sheet = open_sheet(excel_file)
-    current_temp = read_current_temp(sheet)
+def main(excel_file, phase, elapsed_time,temp_prev, temp_curr, d_temp, last_set_temp, sheet):
+    try:
+        new_sheet = open_sheet(excel_file)
+    except:
+        print("Could not read excel file, using previous values")
+        new_sheet = sheet
+    current_temp = read_current_temp(new_sheet, temp_prev)
     if current_temp > int(config.get('WARMING', 'max_body_temp')) or current_temp < int(config.get('WARMING','min_body_temp')):
         print('Reading in a temperature outside of expected range, defaulting to previous temperature')
         current_temp = temp_prev
@@ -119,23 +128,23 @@ def main(excel_file, phase, elapsed_time,temp_prev, temp_curr, d_temp, last_set_
         out_file.close()
     write_out_temp(set_temp)
     if phase == 0 and temp_curr > float(config.get('MAINTENANCE','target'))+1:
-        return 0, temp_prev, temp_curr, d_temp, set_temp
+        return 0, temp_prev, temp_curr, d_temp, set_temp, new_sheet
     elif phase == 0:
         print('Advancing to phase 1: maintenance')
         with open('experiment_log.txt','a') as out_file:
             out_file.write('Advancing to Phase 1: Maintenance\n')
             out_file.close()
-        return 1, temp_prev, temp_curr, d_temp, set_temp
+        return 1, temp_prev, temp_curr, d_temp, set_temp, new_sheet
     if phase == 2:
-        return 2, temp_prev, temp_curr, d_temp, set_temp
+        return 2, temp_prev, temp_curr, d_temp, set_temp, new_sheet
     elif phase == 1 and elapsed_time >= 60*60*int(config.get('MAINTENANCE','duration')):
         print('Advancing to phase 2: rewarming')
         with open('experiment_log.txt','a') as out_file:
             out_file.write('Advancing to Phase 2: Rewarming\n')
             out_file.close()
-        return 2, temp_prev, temp_curr, d_temp, set_temp
+        return 2, temp_prev, temp_curr, d_temp, set_temp, new_sheet
     else:
-        return 1, temp_prev, temp_curr, d_temp, set_temp
+        return 1, temp_prev, temp_curr, d_temp, set_temp, new_sheet
 
 
 #########################################
@@ -150,17 +159,22 @@ try:
     phase = int(config.get('TESTING','start_phase'))
     time_increment = int(config.get('GENERAL','update_frequency'))
     excel_file = config.get('GENERAL','excel_file')
+    try:
+        sheet = xlrd.open_workbook(excel_file).sheet_by_index(0)
+    except:
+        print('Initial excel read failed, please restart program')
+        input('')
     print('Reading initial temp from Excel sheet (this may take a momment)')
-    temp_prev = read_current_temp(open_sheet(excel_file))
+    temp_prev = read_current_temp(open_sheet(excel_file), config.getint('MAINTENANCE','default_starting_temp'))
     if temp_prev > int(config.get('WARMING', 'max_body_temp')) or temp_prev < int(config.get('WARMING','min_body_temp')):
         print('Reading in a temperature outside of expected range, defaulting to default starting temp')
-        temp_prev = int(config.get('MAINTENANCE','default_starting_temp'))
+        temp_prev = config.getint('MAINTENANCE','default_starting_temp')
     temp_curr = temp_prev
     d_temp = 0
     set_temp = 0
     print('Begining temperature control\n')
     while True:
-        phase, temp_prev, temp_curr, d_temp, set_temp= main(excel_file, phase, elapsed_time, temp_prev, temp_curr, d_temp, set_temp)
+        phase, temp_prev, temp_curr, d_temp, set_temp, sheet= main(excel_file, phase, elapsed_time, temp_prev, temp_curr, d_temp, set_temp, sheet)
         print('temperature change:{}'.format(d_temp))
         print('elapsed time ({:02d}:{:02d}:{:02d})   Phase:{} \n'.format(int(elapsed_time/(60*60)),int(elapsed_time/60)%60,elapsed_time%60,phase))
         time.sleep(time_increment)
