@@ -59,12 +59,14 @@ def read_current_temp(sheet, def_temp):
 warming_time = config.getint('TESTING','starting_warming_time')
 
 def calculate_set_temp(temp, phase, d_temp, last_set_temp): #gets closest value from tables in temp_config
+    max_temp = config.getfloat('GENERAL', 'max_output_temp')
+    min_temp = config.getfloat('GENERAL', 'min_output_temp')
     if phase == 0:
         local_temp = rat_set_temps.get(temp, rat_set_temps[min(rat_set_temps.keys(), key=lambda k: abs(k-temp))])
-        return min(40,max(4,local_temp))
+        return min(max_temp,max(min_temp,local_temp))
     elif phase == 1:
         local_temp = rat_set_temps.get(temp, rat_set_temps[min(rat_set_temps.keys(), key=lambda k: abs(k-temp))])+rat_maint_dts.get(d_temp,rat_maint_dts[min(rat_maint_dts.keys(), key=lambda k: abs(k-d_temp))])
-        return min(40,max(4,local_temp))
+        return min(max_temp,max(min_temp,local_temp))
     elif phase == 2:
         print('calculating set temp for warming hour:{}, threshold temp is {}'.format(int((warming_time/(60*60))),rat_warming_targets[int(warming_time/(60*60))] ))
         target_temp = rat_warming_targets[int(warming_time/(60*60))]
@@ -75,7 +77,7 @@ def calculate_set_temp(temp, phase, d_temp, last_set_temp): #gets closest value 
                 local_temp += rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))])
             elif temp < target_temp and rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))]) > 0:
                 local_temp += rat_warming_dts.get(d_temp,rat_warming_dts[min(rat_warming_dts.keys(), key=lambda k: abs(k-d_temp))])
-        return min(40,max(4,local_temp))
+        return min(max_temp,max(min_temp,local_temp))
     else:
         return 0
 
